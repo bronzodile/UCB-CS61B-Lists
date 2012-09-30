@@ -16,19 +16,17 @@ public class MachinePlayer extends Player {
     private int myCount;
     private int opponentCount;
     private int[][] board;
-    private int[][] copy;    
     private Random generator;
 
   // Creates a machine player with the given color.  Color is either 0 (black)
   // or 1 (white).  (White has the first move.)
   public MachinePlayer(int color) {
     board = new int[SIDE][SIDE];    
-    copy = new int[SIDE][SIDE]; 
     myCount = 0;
     opponentCount = 0;
     for (int i = 0; i < SIDE; i++) {
         for (int j = 0; j < SIDE; j++) {      
-            board[i][j] = -1;
+            board[i][j] = EMPTY;
         }
     }
     this.color = color;
@@ -45,30 +43,56 @@ public class MachinePlayer extends Player {
   public Move chooseMove() {
     Move m = new Move(0,0);
     boolean moveFound = false;
-    int moveColor = BLACK;
-    if (this.color == WHITE) {
-        moveColor = WHITE;
-    }
+    int moveColor = this.color;
     if (myCount < 10) {
         do {
             try {
                 int x = generator.nextInt(SIDE);
                 int y = generator.nextInt(SIDE);
                 m = new Move(x,y);
-                makeMove(m, moveColor);
+                makeMove(x, y, moveColor);
                 moveFound = true;
             } catch (InvalidMoveException e) {
                 System.out.println(e);
             }
         } while (!moveFound);
-        myCount++;
     } else {
         // there is already 10 chips on the board
         // now - randomly pick one of them
-        // then pick a direction and calculate the new position
-        // check that the new position is not out of bounds
-        // try the move
+        
+        int targetChip = generator.nextInt(10) + 1;
+        int currChip = 0;
+        int chipX = 0;
+        int chipY = 0;
+        for (int i = 0; i < SIDE; i++) {
+            for (int j = 0; j < SIDE; j++) {
+                if (board[i][j] == color) {
+                    currChip++;
+                    if (currChip == targetChip) {
+                        chipX = i;
+                        chipY = j;
+                    }
+                }
+            }
+        }
+        // then hide the selected chip and pick new position
+        board[chipX][chipY] = EMPTY;
+        myCount--;
+        do {
+            try {
+                int x = generator.nextInt(SIDE);
+                int y = generator.nextInt(SIDE);
+                if (x != chipX || y != chipY) {
+                    m = new Move(x,y,chipX,chipY);
+                    makeMove(x, y, moveColor);
+                    moveFound = true;
+                }
+            } catch (InvalidMoveException e) {
+                System.out.println(e);
+            }
+        } while (!moveFound);
     }
+    myCount++;
     return m;
   } 
 
@@ -81,14 +105,45 @@ public class MachinePlayer extends Player {
     if (this.color == BLACK) {
         moveColor = WHITE;
     }
-    try {
-        makeMove(m, moveColor);
-    } catch (InvalidMoveException e) {
-        System.out.println(e);
-        return false;
+    switch (m.moveKind) {
+        case Move.QUIT:
+            System.out.println("Quit move is not supported yet.");
+            return false;
+            // break;
+        case Move.ADD:
+            try {
+                makeMove(m.x1, m.y1, moveColor);
+            } catch (InvalidMoveException e) {
+                System.out.println(e);
+                return false;
+            }
+            opponentCount++;
+            return true;
+            // break;
+        case Move.STEP:
+            if (board[m.x2][m.y2] != moveColor) {
+                System.out.println("No appropriate chip in the selected square.");
+                return false;
+            }
+            int saveChip = board[m.x2][m.y2];
+            board[m.x2][m.y2] = EMPTY;
+            opponentCount--;
+            try {
+                makeMove(m.x1, m.y1, moveColor);
+            } catch (InvalidMoveException e) {
+                System.out.println(e);
+                board[m.x2][m.y2] = saveChip;
+                opponentCount++;
+                return false;
+            }
+            opponentCount++;
+            return true;
+            // break;
+        default:
+            return false;
+            // break;
+            
     }
-    opponentCount++;
-    return true;
   }
 
   // If the Move m is legal, records the move as a move by "this" player
@@ -100,53 +155,38 @@ public class MachinePlayer extends Player {
     return false;
   }
 
-    private void makeMove(Move m, int moveColor) throws InvalidMoveException {
-        switch (m.moveKind) {
-            case Move.QUIT:
-                    throw new InvalidMoveException("Quit move is not supported yet.");
-                    // break;
-            case Move.ADD:
-                    if (moveColor == color &&  myCount >= 10) {
-                        throw new InvalidMoveException("Cannot play more than 10 chips.");
-                    }
-                    if (moveColor != color &&  opponentCount >= 10) {
-                        throw new InvalidMoveException("Cannot play more than 10 chips.");
-                    }
-                    if ((m.x1 == 0 && m.y1 == 0) ||
-                        (m.x1 == SIDE - 1 && m.y1 == SIDE - 1) ||
-                        (m.x1 == 0 && m.y1 == SIDE - 1) ||
-                        (m.x1 == SIDE - 1 && m.y1 == 0)) {
-                            throw new InvalidMoveException("Cannot place a chip in a corner.");
-                    }
-                    if (moveColor == BLACK) {
-                        if (m.x1 == 0 || m.x1 == SIDE - 1) {
-                            throw new InvalidMoveException("Black cannot move here.");
-                        }
-                    }                        
-                    if (moveColor == WHITE) {
-                        if (m.y1 == 0 || m.y1 == SIDE - 1) {
-                            throw new InvalidMoveException("White cannot move here.");
-                        }
-                    }                                           
-                    if (board[m.x1][m.y1] != -1) {
-                        throw new InvalidMoveException("Cell is already occupied.");
-                    }
-                    if (countNeighbours(m.x1, m.y1, moveColor, true) > 1) {
-                        throw new InvalidMoveException("Connected group is too big.");
-                    }                    
-                    for (int i = 0; i < SIDE; i++) {
-                        for (int j = 0; j < SIDE; j++) {
-                            copy[i][j] = board[i][j];
-                        }
-                    }
-                    board[m.x1][m.y1] = moveColor; 
-                    break;
-            case Move.STEP:
-                    throw new InvalidMoveException("Step moves are not supported yet.");
-                    // break;
-            default:
-                    break;              
+  // Try the move as described by the parameters and update the internal state
+  // if the move is legal; throw an exception otherwise
+    private void makeMove(int x, int y, int moveColor) throws InvalidMoveException {
+        if (moveColor == color &&  myCount >= 10) {
+            throw new InvalidMoveException("Cannot play more than 10 chips.");
         }
+        if (moveColor != color &&  opponentCount >= 10) {
+            throw new InvalidMoveException("Cannot play more than 10 chips.");
+        }
+        if ((x == 0 && y == 0) ||
+            (x == SIDE - 1 && y == SIDE - 1) ||
+            (x == 0 && y == SIDE - 1) ||
+            (x == SIDE - 1 && y == 0)) {
+            throw new InvalidMoveException("Cannot place a chip in a corner.");
+        }
+        if (moveColor == BLACK) {
+            if (x == 0 || x == SIDE - 1) {
+                throw new InvalidMoveException("Black cannot move here.");
+            }
+        }
+        if (moveColor == WHITE) {
+            if (y == 0 || y == SIDE - 1) {
+                throw new InvalidMoveException("White cannot move here.");
+            }
+        }
+        if (board[x][y] != -1) {
+            throw new InvalidMoveException("Cell is already occupied.");
+        }
+        if (countNeighbours(x, y, moveColor, true) > 1) {
+            throw new InvalidMoveException("Connected group is too big.");
+        }
+        board[x][y] = moveColor;
     }    
     private int countNeighbours(int x, int y, int moveColor, boolean initial) {
         int c = 0;
