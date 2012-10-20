@@ -2,6 +2,10 @@
 
 package player;
 import java.util.Random;
+import graph.*;
+import list.InvalidNodeException;
+import list.DList;
+import list.DListNode;
 
 /**
  *  An implementation of an automatic Network player.  Keeps track of moves
@@ -21,6 +25,7 @@ public class MachinePlayer extends Player {
     private int[][] board;
     private int[][][] chips;
     private Random generator;
+    private Graph graph;
 
   // Creates a machine player with the given color.  Color is either 0 (black)
   // or 1 (white).  (White has the first move.)
@@ -36,6 +41,7 @@ public class MachinePlayer extends Player {
     }
     this.color = color;
     generator = new Random();
+    graph = new Graph();
   }
 
   // Creates a machine player with the given color and search depth.  Color is
@@ -47,8 +53,14 @@ public class MachinePlayer extends Player {
   // the internal game board) as a move by "this" player.
   public Move chooseMove() {
     Move m;
-    m = chooseRandomMove();
+    // m = chooseRandomMove();
+    m = chooseDepthOneMove();
+    // m = chooseBestTreeMove();
     makeMove(m,this.color);
+        
+    // generateGraph(this.color);
+    // graph.debugPrint();
+    
     return m;
   }
 
@@ -299,4 +311,357 @@ public class MachinePlayer extends Player {
         }
         System.out.println();
     }
+    private void generateGraph(int mColor) {
+        graph = new Graph();
+        int currCount = oppCount;
+        if (mColor == color) {
+            currCount = myCount;
+        }
+        for (int i = 0; i < currCount; i++) {
+            graph.insertVertex(new Vertex(
+                chips[mColor][i][X],
+                chips[mColor][i][Y]));
+        }
+        int x;
+        int y;
+        int [] destination;
+        for (int i = 0; i < currCount; i++) {
+            x = chips[mColor][i][X];
+            y = chips[mColor][i][Y];
+            destination = try0(x,y,mColor);
+            if (destination[X] != 0 || destination[Y] != 0) {
+                graph.insertEdge(new Edge(
+                    0,
+                    graph.getVertex(x,y),
+                    graph.getVertex(destination[X],destination[Y])));
+            }
+            destination = try1(x,y,mColor);            
+            if (destination[X] != 0 || destination[Y] != 0) {
+                graph.insertEdge(new Edge(
+                    1,
+                    graph.getVertex(x,y),
+                    graph.getVertex(destination[X],destination[Y])));
+            }
+            destination = try3(x,y,mColor);
+            if (destination[X] != 0 || destination[Y] != 0) {
+                graph.insertEdge(new Edge(
+                    3,
+                    graph.getVertex(x,y),
+                    graph.getVertex(destination[X],destination[Y])));
+            }
+            destination = try4(x,y,mColor);
+            if (destination[X] != 0 || destination[Y] != 0) {
+                graph.insertEdge(new Edge(
+                    4,
+                    graph.getVertex(x,y),
+                    graph.getVertex(destination[X],destination[Y])));
+            }
+        }
+    }
+    private int[] try0(int x, int y, int mColor) {
+        int[] destination = {0, 0};
+        int topBorder = 1;
+        if (mColor == BLACK) {
+            topBorder = 0;
+        }
+        for (int i = y-1; i >= topBorder; i--) {
+            if (board[x][i] == mColor) {
+                destination[X] = x;
+                destination[Y] = i;
+                return destination;
+            } else if (board[x][i] != EMPTY) {
+                return destination;
+            }
+        }
+        return destination;
+     }
+    private int[] try1(int x, int y, int mColor) {
+        int[] destination = {0, 0};
+        int rightBorder = 7;
+        int topBorder = 1;
+        if (mColor == BLACK) {
+            rightBorder = 6;
+            topBorder = 0;            
+        }
+        int i = x + 1;
+        int j = y - 1;
+        while (i <= rightBorder && j >= topBorder) {
+            if (board[i][j] == mColor) {
+                destination[X] = i;
+                destination[Y] = j;
+                return destination;
+            } else if (board[i][j] != EMPTY) {
+                return destination;
+            }
+            i++;
+            j--;
+        }
+        return destination;
+     }
+    private int[] try3(int x, int y, int mColor) {
+        int[] destination = {0, 0};
+        int rightBorder = 7;
+        if (mColor == BLACK) {
+            rightBorder = 6;
+        }
+        for (int i = x+1; i <= rightBorder; i++) {
+            if (board[i][y] == mColor) {
+                destination[X] = i;
+                destination[Y] = y;
+                return destination;
+            } else if (board[i][y] != EMPTY) {
+                return destination;
+            }
+        }
+        return destination;
+     }
+    private int[] try4(int x, int y, int mColor) {
+        int[] destination = {0, 0};
+        int rightBorder = 7;
+        int bottomBorder = 6;
+        if (mColor == BLACK) {
+            rightBorder = 6;
+            bottomBorder = 7;
+        }
+        int i = x + 1;
+        int j = y + 1;
+        while (i <= rightBorder && j <= bottomBorder) {
+            if (board[i][j] == mColor) {
+                destination[X] = i;
+                destination[Y] = j;
+                return destination;
+            } else if (board[i][j] != EMPTY) {
+                return destination;
+            }
+            i++;
+            j++;
+        }
+        return destination;
+     }
+    private boolean visitVertex(Vertex v, int depth, int direction, int mColor) {
+        if (v.visited()) return false;
+        if ((mColor == BLACK && v.y() == 7) || (mColor == WHITE && v.x() == 7)) {
+            if (depth >= 5) {
+                return true;
+            } else {
+                return false;
+            }
+        } else if ((depth > 0) && ((mColor == BLACK && v.y() == 0) || (mColor == WHITE && v.x() == 0))) {
+            return false;
+        } else {
+            v.visit();
+            return tryEdges(v.incidentEdges(),depth,direction,mColor,v);
+        }
+    }
+    private boolean tryEdges(DList edges, int depth, int direction, int mColor, Vertex from) {
+        try {
+            if (edges.length() == 0) return false;
+            DListNode currEdgeNode = (DListNode) edges.front();
+            Edge currEdge = (Edge) currEdgeNode.item();
+            if (currEdge.direction() == direction) {
+                currEdgeNode.remove();
+                return tryEdges(edges, depth, direction, mColor, from);
+            }
+            if (visitVertex(currEdge.opposite(from), depth + 1, currEdge.direction(), mColor)) {
+                return true;
+            }
+            currEdgeNode.remove();
+            return tryEdges(edges, depth, direction, mColor, from);
+        } catch (InvalidNodeException e) {
+            System.out.println(e);
+            return false;
+        }
+    }
+    private boolean isWinningGrid(int mColor) {
+        int foundStart = 0;
+        int foundFinish = 0;
+        int[][] startChips = new int[6][2];
+        int currCount = oppCount;
+        if (mColor == color) {
+            currCount = myCount;
+        }
+        if (currCount < 6) return false;
+        for (int i = 0; i < currCount; i++) {
+            if (mColor == BLACK) {
+                if (chips[mColor][i][Y] == 0) {
+                    startChips[foundStart][X] = chips[mColor][i][X];
+                    startChips[foundStart][Y] = chips[mColor][i][Y];
+                    foundStart++;
+                }
+                if (chips[mColor][i][Y] == 7) {
+                    foundFinish++;
+                }
+            } else {
+                if (chips[mColor][i][X] == 0) {
+                    startChips[foundStart][X] = chips[mColor][i][X];
+                    startChips[foundStart][Y] = chips[mColor][i][Y];
+                    foundStart++;
+                }
+                if (chips[mColor][i][X] == 7) {
+                    foundFinish++;
+                }
+            }
+        }
+        if (foundStart == 0 || foundFinish == 0) return false;
+        if (currCount - foundStart - foundFinish < 4) return false;
+        return checkChips(startChips,0,foundStart,mColor);
+    }
+    private boolean checkChips(int[][] startChips, int fromChip, int toChip, int mColor) {
+        if (fromChip >= toChip) return false;
+        graph.reset();
+        Vertex v = graph.getVertex(startChips[fromChip][X],startChips[fromChip][Y]);
+        if (visitVertex(v,0,-1,mColor)) return true;
+        return checkChips(startChips,fromChip + 1,toChip,mColor);
+    }
+    private Move chooseDepthOneMove(){
+        if (myCount == 0) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(3,0);
+            } else {
+                m = new Move(0,3);
+            }
+            return m;
+        } else if (myCount == 1) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(4,7);
+            } else {
+                m = new Move(7,4);
+            }
+            return m;
+        }
+        Move[] movesArray = getMoves(color);
+        double bestScore = -2;
+        double score;
+        Move bestMove = new Move();
+        for(Move m: movesArray) {
+            makeMove(m,color);
+            generateGraph(color);
+            if (isWinningGrid(color)) {
+                undoMove(m,color);
+                System.out.println("Winning move detected!");
+                return m;
+            }
+            score = evaluateBoard(color);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = m;
+            }
+            undoMove(m,color);
+        }
+        return bestMove;
+    }
+    private double evaluateBoard(int mColor) {
+        int myEdges = graph.getEdgeCount();
+        int oppColor = BLACK;
+        if (mColor == BLACK) {
+            oppColor = WHITE;
+        }
+        generateGraph(oppColor);
+        int oppEdges = graph.getEdgeCount();
+        return (myEdges - oppEdges)/45.0;
+    }
+    private int vertexRank(Vertex v, int depth, int direction, int mColor, Vertex from) {
+        if (v == from) return 0;
+        if (v.visited()) return depth - 1;
+        if (depth > 0) {
+            if ((mColor == BLACK && v.x() == 7) || 
+                (mColor == BLACK && v.x() == 0) ||
+                (mColor == WHITE && v.y() == 7) ||
+                (mColor == WHITE && v.y() == 0)) return depth;
+        }
+        v.visit();
+        return visitEdges(v.incidentEdges(),depth,direction,mColor,v);
+    }
+    private int visitEdges(DList edges, int depth, int direction, int mColor, Vertex v) {
+        try {
+            if (edges.length() == 0) return 0;
+            DListNode currEdgeNode = (DListNode) edges.front();
+            Edge currEdge = (Edge) currEdgeNode.item();
+            currEdgeNode.remove();
+            if (currEdge.direction() == direction) {
+                return depth + visitEdges(edges,depth,direction,mColor,v);
+            }
+            return vertexRank(currEdge.opposite(v),depth + 1,currEdge.direction(),mColor,v) +
+                   visitEdges(edges,depth,direction,mColor,v);
+        } catch (InvalidNodeException e) {
+            System.out.println(e);
+            return 0;
+        }
+    }
+    private int measureTrees(int mColor, int startChip) {
+        int currCount = oppCount;
+        if (mColor == color) {
+            currCount = myCount;
+        }
+        if (startChip >= currCount) return 0;
+        graph.reset();
+        Vertex v = graph.getVertex(chips[mColor][startChip][X],chips[mColor][startChip][Y]);
+        return vertexRank(v,0,-1,mColor,null) + measureTrees(mColor,startChip + 1);
+    }
+    private int evaluateBoardTrees(int mColor) {
+        int myTrees = measureTrees(mColor,0);
+        int oppColor = BLACK;
+        if (mColor == BLACK) {
+            oppColor = WHITE;
+        }
+        generateGraph(oppColor);
+        int oppTrees = measureTrees(oppColor,0);
+        System.out.println("My Trees: " + myTrees + "   Opp Trees: " + oppTrees);
+        return myTrees - oppTrees;
+    }
+    private Move chooseBestTreeMove(){
+        if (myCount == 0) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(3,0);
+            } else {
+                m = new Move(0,3);
+            }
+            return m;
+        } else if (myCount == 1) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(4,7);
+            } else {
+                m = new Move(7,4);
+            }
+            return m;
+        }
+        Move[] movesArray = getMoves(color);
+        int bestScore = -9999999;
+        int score;
+        Move bestMove = new Move();
+        for(Move m: movesArray) {
+            makeMove(m,color);
+            generateGraph(color);
+            if (isWinningGrid(color)) {
+                undoMove(m,color);
+                System.out.println("Winning move detected!");
+                return m;
+            }
+            score = evaluateBoardTrees(color);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = m;
+            }
+            undoMove(m,color);
+        }
+        return bestMove;
+    }
+ 
+ 
+ 
+ 
+        
+        
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+            
 }
