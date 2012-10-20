@@ -19,13 +19,15 @@ public class MachinePlayer extends Player {
     public static final int X = 0;
     public static final int Y = 1;
     private int color;
+    private int oppColor;
     private int myCount;
     private int oppCount;
-    private int opponentCount;
     private int[][] board;
     private int[][][] chips;
     private Random generator;
-    private Graph graph;
+    private Graph myGraph;
+    private Graph oppGraph;
+    
 
   // Creates a machine player with the given color.  Color is either 0 (black)
   // or 1 (white).  (White has the first move.)
@@ -33,15 +35,20 @@ public class MachinePlayer extends Player {
     board = new int[SIDE][SIDE];
     chips = new int[2][10][2];    
     myCount = 0;
-    opponentCount = 0;
+    oppCount = 0;
     for (int i = 0; i < SIDE; i++) {
         for (int j = 0; j < SIDE; j++) {      
             board[i][j] = EMPTY;
         }
     }
     this.color = color;
+    this.oppColor = BLACK;
+    if (this.color == BLACK) {
+        this.oppColor = WHITE;
+    }
     generator = new Random();
-    graph = new Graph();
+    myGraph = new Graph();
+    oppGraph = new Graph();    
   }
 
   // Creates a machine player with the given color and search depth.  Color is
@@ -311,13 +318,9 @@ public class MachinePlayer extends Player {
         }
         System.out.println();
     }
-    private void generateGraph(int mColor) {
-        graph = new Graph();
-        int currCount = oppCount;
-        if (mColor == color) {
-            currCount = myCount;
-        }
-        for (int i = 0; i < currCount; i++) {
+    private Graph generateGraph(int mColor, int mCount) {
+        Graph graph = new Graph();
+        for (int i = 0; i < mCount; i++) {
             graph.insertVertex(new Vertex(
                 chips[mColor][i][X],
                 chips[mColor][i][Y]));
@@ -325,7 +328,7 @@ public class MachinePlayer extends Player {
         int x;
         int y;
         int [] destination;
-        for (int i = 0; i < currCount; i++) {
+        for (int i = 0; i < mCount; i++) {
             x = chips[mColor][i][X];
             y = chips[mColor][i][Y];
             destination = try0(x,y,mColor);
@@ -357,6 +360,7 @@ public class MachinePlayer extends Player {
                     graph.getVertex(destination[X],destination[Y])));
             }
         }
+        return graph;
     }
     private int[] try0(int x, int y, int mColor) {
         int[] destination = {0, 0};
@@ -450,7 +454,9 @@ public class MachinePlayer extends Player {
             return false;
         } else {
             v.visit();
-            return tryEdges(v.incidentEdges(),depth,direction,mColor,v);
+            boolean result = tryEdges(v.incidentEdges(),depth,direction,mColor,v);
+            v.reset();
+            return result;
         }
     }
     private boolean tryEdges(DList edges, int depth, int direction, int mColor, Vertex from) {
@@ -472,7 +478,7 @@ public class MachinePlayer extends Player {
             return false;
         }
     }
-    private boolean isWinningGrid(int mColor) {
+    private boolean isWinningGrid(int mColor, Graph graph) {
         int foundStart = 0;
         int foundFinish = 0;
         int[][] startChips = new int[6][2];
@@ -504,14 +510,14 @@ public class MachinePlayer extends Player {
         }
         if (foundStart == 0 || foundFinish == 0) return false;
         if (currCount - foundStart - foundFinish < 4) return false;
-        return checkChips(startChips,0,foundStart,mColor);
+        return checkChips(startChips,0,foundStart,mColor,graph);
     }
-    private boolean checkChips(int[][] startChips, int fromChip, int toChip, int mColor) {
+    private boolean checkChips(int[][] startChips, int fromChip, int toChip, int mColor, Graph graph) {
         if (fromChip >= toChip) return false;
         graph.reset();
         Vertex v = graph.getVertex(startChips[fromChip][X],startChips[fromChip][Y]);
         if (visitVertex(v,0,-1,mColor)) return true;
-        return checkChips(startChips,fromChip + 1,toChip,mColor);
+        return checkChips(startChips,fromChip + 1,toChip,mColor, graph);
     }
     private Move chooseDepthOneMove(){
         if (myCount == 0) {
@@ -537,13 +543,14 @@ public class MachinePlayer extends Player {
         Move bestMove = new Move();
         for(Move m: movesArray) {
             makeMove(m,color);
-            generateGraph(color);
-            if (isWinningGrid(color)) {
+            myGraph = generateGraph(color, myCount);
+            oppGraph = generateGraph(oppColor, oppCount);            
+            if (isWinningGrid(color,myGraph)) {
                 undoMove(m,color);
                 System.out.println("Winning move detected!");
                 return m;
             }
-            score = evaluateBoard(color);
+            score = evaluateBoard(color,myGraph,oppGraph);
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = m;
@@ -552,103 +559,10 @@ public class MachinePlayer extends Player {
         }
         return bestMove;
     }
-    private double evaluateBoard(int mColor) {
+    private double evaluateBoard(int mColor, Graph graph, Graph other) {
         int myEdges = graph.getEdgeCount();
-        int oppColor = BLACK;
-        if (mColor == BLACK) {
-            oppColor = WHITE;
-        }
-        generateGraph(oppColor);
-        int oppEdges = graph.getEdgeCount();
+        int oppEdges = other.getEdgeCount();
         return (myEdges - oppEdges)/45.0;
-    }
-    private int vertexRank(Vertex v, int depth, int direction, int mColor, Vertex from) {
-        if (v == from) return 0;
-        if (v.visited()) return depth - 1;
-        if (depth > 0) {
-            if ((mColor == BLACK && v.x() == 7) || 
-                (mColor == BLACK && v.x() == 0) ||
-                (mColor == WHITE && v.y() == 7) ||
-                (mColor == WHITE && v.y() == 0)) return depth;
-        }
-        v.visit();
-        return visitEdges(v.incidentEdges(),depth,direction,mColor,v);
-    }
-    private int visitEdges(DList edges, int depth, int direction, int mColor, Vertex v) {
-        try {
-            if (edges.length() == 0) return 0;
-            DListNode currEdgeNode = (DListNode) edges.front();
-            Edge currEdge = (Edge) currEdgeNode.item();
-            currEdgeNode.remove();
-            if (currEdge.direction() == direction) {
-                return depth + visitEdges(edges,depth,direction,mColor,v);
-            }
-            return vertexRank(currEdge.opposite(v),depth + 1,currEdge.direction(),mColor,v) +
-                   visitEdges(edges,depth,direction,mColor,v);
-        } catch (InvalidNodeException e) {
-            System.out.println(e);
-            return 0;
-        }
-    }
-    private int measureTrees(int mColor, int startChip) {
-        int currCount = oppCount;
-        if (mColor == color) {
-            currCount = myCount;
-        }
-        if (startChip >= currCount) return 0;
-        graph.reset();
-        Vertex v = graph.getVertex(chips[mColor][startChip][X],chips[mColor][startChip][Y]);
-        return vertexRank(v,0,-1,mColor,null) + measureTrees(mColor,startChip + 1);
-    }
-    private int evaluateBoardTrees(int mColor) {
-        int myTrees = measureTrees(mColor,0);
-        int oppColor = BLACK;
-        if (mColor == BLACK) {
-            oppColor = WHITE;
-        }
-        generateGraph(oppColor);
-        int oppTrees = measureTrees(oppColor,0);
-        System.out.println("My Trees: " + myTrees + "   Opp Trees: " + oppTrees);
-        return myTrees - oppTrees;
-    }
-    private Move chooseBestTreeMove(){
-        if (myCount == 0) {
-            Move m;
-            if(color == BLACK) {
-                m = new Move(3,0);
-            } else {
-                m = new Move(0,3);
-            }
-            return m;
-        } else if (myCount == 1) {
-            Move m;
-            if(color == BLACK) {
-                m = new Move(4,7);
-            } else {
-                m = new Move(7,4);
-            }
-            return m;
-        }
-        Move[] movesArray = getMoves(color);
-        int bestScore = -9999999;
-        int score;
-        Move bestMove = new Move();
-        for(Move m: movesArray) {
-            makeMove(m,color);
-            generateGraph(color);
-            if (isWinningGrid(color)) {
-                undoMove(m,color);
-                System.out.println("Winning move detected!");
-                return m;
-            }
-            score = evaluateBoardTrees(color);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = m;
-            }
-            undoMove(m,color);
-        }
-        return bestMove;
     }
  
  
