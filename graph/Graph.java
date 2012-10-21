@@ -6,7 +6,7 @@ import list.InvalidNodeException;
 
 public class Graph {
     DList vertices;
-    int edgeCount;
+    double edgeCount;
     int neutralEdges;
     
     public Graph() {
@@ -18,15 +18,38 @@ public class Graph {
         vertices.insertBack(v);
     }
     public void insertEdge(Edge e) {
+        Double newEdgeWeight = 1.0;
         Vertex v = e.getV();
         Vertex u = e.opposite(v);
         v.addEdge(e);
         u.addEdge(e);
-        edgeCount++;
         if (v.x() == 0 && u.x() == 0) neutralEdges++;
-        if (v.x() == 0 && u.x() == 7) neutralEdges++;
+        if (v.x() == 7 && u.x() == 7) neutralEdges++;
         if (v.y() == 0 && u.y() == 0) neutralEdges++;
-        if (v.y() == 0 && u.y() == 7) neutralEdges++;
+        if (v.y() == 7 && u.y() == 7) neutralEdges++;
+        DList otherEdges = (DList) v.incidentEdges();
+        DListNode node = (DListNode) otherEdges.front();
+        try {
+            while (node.isValidNode()) {
+                Edge edge = (Edge) node.item();
+                if (edge.direction() == e.direction()) {
+                    newEdgeWeight = newEdgeWeight * 0.5;
+                }
+                node = (DListNode) node.next();
+            }
+            otherEdges = (DList) u.incidentEdges();
+            node = (DListNode) otherEdges.front();
+            while (node.isValidNode()) {
+                Edge edge = (Edge) node.item();
+                if (edge.direction() == e.direction()) {
+                    newEdgeWeight = newEdgeWeight * 0.5;
+                }
+                node = (DListNode) node.next();
+            }
+        } catch (InvalidNodeException ex) {
+            System.out.println(ex);
+        }
+        edgeCount = edgeCount + newEdgeWeight;
     }
     public Vertex getVertex(int x, int y) {
         Vertex v = new Vertex(0,0);
@@ -76,7 +99,7 @@ public class Graph {
             System.out.println(e);
         }
     }
-    public int getEdgeCount() {
+    public double getEdgeCount() {
         return edgeCount - neutralEdges;
     }
 }

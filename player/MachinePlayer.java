@@ -18,6 +18,10 @@ public class MachinePlayer extends Player {
     public static final int SIDE = 8;
     public static final int X = 0;
     public static final int Y = 1;
+    public static final boolean COMPUTER = true;
+    public static final boolean HUMAN = false;
+    public static final double REDUCTION = 0.99;
+    public static final double BESTSCORE = 45.0;
     private int color;
     private int oppColor;
     private int myCount;
@@ -27,6 +31,7 @@ public class MachinePlayer extends Player {
     private Random generator;
     private Graph myGraph;
     private Graph oppGraph;
+    private int maxDepth;
     
 
   // Creates a machine player with the given color.  Color is either 0 (black)
@@ -49,6 +54,7 @@ public class MachinePlayer extends Player {
     generator = new Random();
     myGraph = new Graph();
     oppGraph = new Graph();    
+    maxDepth = 3;
   }
 
   // Creates a machine player with the given color and search depth.  Color is
@@ -61,8 +67,9 @@ public class MachinePlayer extends Player {
   public Move chooseMove() {
     Move m;
     // m = chooseRandomMove();
-    m = chooseDepthOneMove();
-    // m = chooseBestTreeMove();
+    // m = chooseDepthOneMove();
+    m = chooseABmove();
+    
     makeMove(m,this.color);
         
     // generateGraph(this.color);
@@ -317,6 +324,7 @@ public class MachinePlayer extends Player {
             System.out.print("[" + chips[WHITE][i][X] + "," + chips[WHITE][i][Y] + "] ");
         }
         System.out.println();
+        System.out.println("My count: " + myCount + " Opp count: " + oppCount);
     }
     private Graph generateGraph(int mColor, int mCount) {
         Graph graph = new Graph();
@@ -550,7 +558,7 @@ public class MachinePlayer extends Player {
                 System.out.println("Winning move detected!");
                 return m;
             }
-            score = evaluateBoard(color,myGraph,oppGraph);
+            score = evaluateBoard(myGraph,oppGraph);
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = m;
@@ -559,13 +567,88 @@ public class MachinePlayer extends Player {
         }
         return bestMove;
     }
-    private double evaluateBoard(int mColor, Graph graph, Graph other) {
-        int myEdges = graph.getEdgeCount();
-        int oppEdges = other.getEdgeCount();
-        return (myEdges - oppEdges)/45.0;
+    private double evaluateBoard(Graph graph, Graph other) {
+        double myEdges = graph.getEdgeCount();
+        double oppEdges = other.getEdgeCount();
+        // return (myEdges - oppEdges) /45.0;
+        return (myEdges - oppEdges) * 1.0;
     }
- 
- 
+    private Best chooseAB(boolean side, double alpha, double beta, int depth) {
+        Best myBest = new Best();
+        Best reply;
+        Move[] moves;
+        int mColor = oppColor;
+        if (side == COMPUTER) {
+            mColor = color;
+        }
+        myGraph = generateGraph(color,myCount);
+        oppGraph = generateGraph(oppColor,oppCount);
+
+        if (isWinningGrid(oppColor,oppGraph)) {
+            myBest.score = -BESTSCORE * Math.pow(REDUCTION,depth - 1);
+            return myBest;
+        }
+        if (isWinningGrid(color,myGraph)) {
+            myBest.score = BESTSCORE * Math.pow(REDUCTION,depth - 1);
+            return myBest;
+        }
+        if (depth >= this.maxDepth) {
+            myBest.score = evaluateBoard(myGraph,oppGraph) * Math.pow(REDUCTION,depth - 1);
+            return myBest;
+        }
+        if (side == COMPUTER) {
+            myBest.score = alpha;
+        } else {
+            myBest.score = beta;
+        }
+        moves = getMoves(mColor);
+        for (Move m: moves) {
+            makeMove(m,mColor);
+            reply = chooseAB(!side,alpha,beta,depth + 1);
+            undoMove(m,mColor);
+            if ((side == COMPUTER) && (reply.score > myBest.score)) {
+                myBest.move = m;
+                myBest.score = reply.score;
+                alpha = reply.score;
+            } else if ((side == HUMAN) && (reply.score < myBest.score)) {
+                myBest.move = m;
+                myBest.score = reply.score;
+                beta = reply.score;
+            }
+            if (alpha >= beta) {
+                return myBest;
+            }
+        }
+        return myBest;
+    }
+    private Move chooseABmove() {
+        /*if (myCount == 0) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(4,7);
+            } else {
+                m = new Move(7,4);
+            }
+            return m;
+        
+        }*//* else if (myCount == 1) {
+            Move m;
+            if(color == BLACK) {
+                m = new Move(0,3);
+            } else {
+                m = new Move(3,0);
+            }
+            return m;
+        }*/
+        Best b = chooseAB(COMPUTER,-BESTSCORE,BESTSCORE,0);
+        return b.move;
+    }
+                        
+                
+                
+            
+        
+        
  
  
         
